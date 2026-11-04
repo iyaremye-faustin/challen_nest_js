@@ -6,6 +6,8 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/sequelize';
+import { Sequelize } from 'sequelize-typescript';
 import { InitiateLoanPaymentDto } from './dto/initiate-loan-payment.dto';
 import { PaymentCallbackDto } from './dto/payment-callback.dto';
 import { LoanPaymentRepository } from './loan-payment.repository';
@@ -22,6 +24,7 @@ export class LoanPaymentsService {
   constructor(
     private readonly loanPaymentRepository: LoanPaymentRepository,
     private readonly loanRepository: LoanRepository,
+    @InjectConnection() private readonly sequelize: Sequelize,
   ) {}
 
   async initiate(
@@ -138,21 +141,30 @@ export class LoanPaymentsService {
       });
     }
 
-    await this.loanPaymentRepository.update(payment.id, {
-      status: dto.status,
-      status_reason: dto.reason ?? null,
-    });
+    await this.sequelize.transaction(async (transaction) => {
+      if (dto.status === PAYMENT_NOTIFICATION_STATUS.SENT) {
+        const paidBefore = await this.loanPaymentRepository.sumSuccessfulForLoan(
+          loan.id,
+          transaction,
+        );
+        const totalPaid = paidBefore + Number(payment.amount);
+        const nextStatus =
+          totalPaid >= Number(loan.loan_amount)
+            ? LOAN_PAYMENT_STATUS.PAID
+            : LOAN_PAYMENT_STATUS.PARTIALLY_PAID;
+        await this.loanRepository.update(
+          loan.id,
+          { payment_status: nextStatus },
+          { transaction },
+        );
+      }
 
-    if (dto.status === PAYMENT_NOTIFICATION_STATUS.SENT) {
-      const paidSoFar =
-        await this.loanPaymentRepository.sumSuccessfulForLoan(loan.id);
-      const totalPaid = paidSoFar + Number(payment.amount);
-      const nextStatus =
-        totalPaid >= Number(loan.loan_amount)
-          ? LOAN_PAYMENT_STATUS.PAID
-          : LOAN_PAYMENT_STATUS.PARTIALLY_PAID;
-      await this.loanRepository.update(loan.id, { payment_status: nextStatus });
-    }
+      await this.loanPaymentRepository.update(
+        payment.id,
+        { status: dto.status, status_reason: dto.reason ?? null },
+        { transaction },
+      );
+    });
 
     return {
       success: true,

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Transaction } from 'sequelize';
 import { BaseRepository } from '../../common/base.repository';
 import { LoanPayment } from '../../database/models/loan-payment.model';
 import { PAYMENT_NOTIFICATION_STATUS } from '../../constants/general';
@@ -18,13 +19,17 @@ export class LoanPaymentRepository extends BaseRepository<LoanPayment> {
     return this.model.findOne({ where: { transaction_id } });
   }
 
-  async sumSuccessfulForLoan(loan_id: string): Promise<number> {
+  async sumSuccessfulForLoan(
+    loan_id: string,
+    transaction?: Transaction,
+  ): Promise<number> {
     const rows = await this.model.findAll({
       where: {
         loan_id,
         status: PAYMENT_NOTIFICATION_STATUS.SENT,
       },
       attributes: ['amount'],
+      transaction,
     });
     return rows.reduce((acc, row) => acc + Number(row.amount), 0);
   }

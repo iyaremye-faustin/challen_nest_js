@@ -273,3 +273,13 @@ npm run db:seed              # super-admin + privileges
 npm run test
 npm run test:e2e
 ```
+
+
+How to run the app
+--------------------
+- Clone the project 
+- run npm install 
+- create .env file in the same of the sample added in the .env-example 
+- run npm run dev command 
+- access and test the project using swagger on http://localhost:4000/api/docs
+
